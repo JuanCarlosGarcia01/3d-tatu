@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PrintControl — Dashboard 3D</title>
+
+  <!-- Fuentes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <!-- Estilos -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ===================== SIDEBAR ===================== -->
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-title">PrintControl</div>
+    <div class="logo-sub">Gestión 3D</div>
+  </div>
+  <div class="nav">
+    <button class="nav-item active" onclick="setView('dashboard')">
+      <span class="nav-icon">◈</span> Dashboard
+    </button>
+    <button class="nav-item" onclick="setView('pedidos')" id="nav-pedidos">
+      <span class="nav-icon">◷</span> Pedidos activos
+      <span class="nav-badge" id="badge-urgentes" style="display:none">!</span>
+    </button>
+    <button class="nav-item" onclick="setView('historial')">
+      <span class="nav-icon">≡</span> Historial
+    </button>
+    <button class="nav-item" onclick="setView('materiales')">
+      <span class="nav-icon">◎</span> Materiales
+    </button>
+    <button class="nav-item" onclick="setView('calculadora')">
+      <span class="nav-icon">∑</span> Calculadora
+    </button>
+  </div>
+</nav>
+
+<!-- ===================== CONTENIDO PRINCIPAL ===================== -->
+<div class="main">
+  <div class="topbar">
+    <span class="page-title" id="topbar-title">Dashboard</span>
+    <span class="page-sub"   id="topbar-date"></span>
+  </div>
+
+  <div class="content">
+
+    <!-- ── DASHBOARD ── -->
+    <div class="view active" id="view-dashboard">
+
+      <div class="metrics" id="metrics-container"></div>
+
+      <div class="grid-2" style="margin-bottom:20px">
+
+        <!-- Torta ganancias -->
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">◈</div>
+            Ganancias por categoría
+          </div>
+          <div class="period-selector">
+            <button class="period-btn active" onclick="setPeriod('semana',this)">Semana</button>
+            <button class="period-btn"        onclick="setPeriod('mes',this)">Mes</button>
+            <button class="period-btn"        onclick="setPeriod('ano',this)">Año</button>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div class="chart-wrap" style="width:180px;height:180px;flex-shrink:0">
+              <canvas id="pieChart" width="180" height="180"></canvas>
+            </div>
+            <div class="pie-legend" id="pie-legend"></div>
+          </div>
+        </div>
+
+        <!-- Línea evolución -->
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">∿</div>
+            Evolución de ingresos
+          </div>
+          <div class="period-selector">
+            <button class="period-btn active" onclick="setLinePeriod('semana',this)">Semana</button>
+            <button class="period-btn"        onclick="setLinePeriod('mes',this)">Mes</button>
+          </div>
+          <canvas id="lineChart" height="160"></canvas>
+        </div>
+
+      </div>
+
+      <!-- Próximos vencimientos -->
+      <div class="card">
+        <div class="card-title">
+          <div class="card-title-icon">◷</div>
+          Próximos vencimientos
+        </div>
+        <div class="pedido-list" id="upcoming-list"></div>
+      </div>
+
+    </div><!-- /view-dashboard -->
+
+
+    <!-- ── PEDIDOS ACTIVOS ── -->
+    <div class="view" id="view-pedidos">
+
+      <div class="alert-banner" id="alert-urgentes" style="display:none">
+        <span class="alert-icon">⚠</span>
+        <span id="alert-text"></span>
+      </div>
+
+      <div class="grid-2">
+
+        <!-- Calendario -->
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">◷</div>
+            <span id="cal-month-title"></span>
+            <div style="margin-left:auto;display:flex;gap:6px">
+              <button onclick="changeMonth(-1)" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px">‹</button>
+              <button onclick="changeMonth(1)"  style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:16px">›</button>
+            </div>
+          </div>
+          <div class="calendar-grid" id="cal-headers"></div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+        </div>
+
+        <!-- Lista pedidos activos -->
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">◈</div>
+            Pedidos activos
+            <button class="btn-add" style="margin-left:auto;padding:6px 12px;font-size:12px" onclick="openModal('nuevo')">+ Nuevo</button>
+          </div>
+          <div class="pedido-list" id="active-pedidos"></div>
+        </div>
+
+      </div>
+    </div><!-- /view-pedidos -->
+
+
+    <!-- ── HISTORIAL ── -->
+    <div class="view" id="view-historial">
+
+      <div class="historial-toolbar">
+        <input  class="search-input"  type="text"  id="search-input"   placeholder="Buscar por cliente, archivo STL..." oninput="filterHistorial()">
+        <select class="filter-select" id="filter-status" onchange="filterHistorial()">
+          <option value="">Todos los estados</option>
+          <option value="Entregado">Entregado</option>
+          <option value="Imprimiendo">Imprimiendo</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+        <button class="btn-add" onclick="openModal('nuevo')">+ Nuevo pedido</button>
+      </div>
+
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Cliente</th>
+                <th>Archivo STL</th>
+                <th>Material</th>
+                <th>Precio</th>
+                <th>Entrega</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody id="historial-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /view-historial -->
+
+
+    <!-- ── MATERIALES ── -->
+    <div class="view" id="view-materiales">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:13px;color:var(--text2)">Stock de filamentos y materiales</div>
+        <button class="btn-add" onclick="openMatModal()">+ Agregar material</button>
+      </div>
+
+      <div class="mat-grid" id="mat-grid"></div>
+
+    </div><!-- /view-materiales -->
+
+
+    <!-- ── CALCULADORA ── -->
+    <div class="view" id="view-calculadora">
+      <div class="grid-2" style="align-items:start">
+
+        <!-- Panel izquierdo: inputs -->
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">∑</div>
+            Parámetros de la impresión
+          </div>
+
+          <!-- Inputs principales -->
+          <div class="form-group">
+            <label class="form-label">Precio del filamento PLA ($/kg)</label>
+            <input class="form-input" type="number" id="c-filamento" value="15000" min="1" oninput="calcular()">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Peso del modelo (g)</label>
+              <input class="form-input" type="number" id="c-peso" value="50" min="1" oninput="calcular()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Tiempo de impresión (hs)</label>
+              <input class="form-input" type="number" id="c-horas" value="4" min="0.1" step="0.5" oninput="calcular()">
+            </div>
+          </div>
+
+          <!-- Parámetros avanzados colapsables -->
+          <div style="border-top:1px solid var(--border);margin:18px 0 14px"></div>
+          <button onclick="toggleAvanzados()" style="background:none;border:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:0;margin-bottom:14px;width:100%">
+            <span style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px">Parámetros avanzados (Bambu A1)</span>
+            <span style="margin-left:auto;font-size:11px;color:var(--text3)" id="avanzados-toggle-icon">▼ ver</span>
+          </button>
+
+          <div id="avanzados-panel" style="display:none">
+            <div style="background:rgba(56,189,248,0.07);border:1px solid rgba(56,189,248,0.2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.6">
+              Valores basados en specs oficiales Bambu Lab A1 (220V, PLA).<br>
+              Consumo real promedio: <strong style="color:var(--cyan)">95W</strong> durante impresión.
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Electricidad ($/kWh)</label>
+                <input class="form-input" type="number" id="c-kwh" value="120" min="0" step="1" oninput="calcular()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Consumo impresora (W)</label>
+                <input class="form-input" type="number" id="c-watts" value="95" min="1" oninput="calcular()">
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">Oficial Bambu A1 · PLA @ 220V</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Amortización impresora ($/hs)</label>
+                <input class="form-input" type="number" id="c-amort" value="150" min="0" oninput="calcular()">
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">A1 Combo ~$700k ÷ 5000hs vida útil</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Reserva por fallas (%)</label>
+                <input class="form-input" type="number" id="c-falla" value="8" min="0" max="100" oninput="calcular()">
+                <div style="font-size:10px;color:var(--text3);margin-top:4px">Tasa de falla estimada A1</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Tu tarifa ($/hs)</label>
+                <input class="form-input" type="number" id="c-mano" value="500" min="0" oninput="calcular()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Minutos de prep/post</label>
+                <input class="form-input" type="number" id="c-minutos" value="15" min="0" oninput="calcular()">
+              </div>
+            </div>
+          </div>
+
+          <!-- Margen -->
+          <div style="border-top:1px solid var(--border);margin:18px 0 14px"></div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px">Margen de ganancia</div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <input type="range" id="c-margen" min="10" max="200" value="40" step="5" style="flex:1" oninput="updateMargenLabel();calcular()">
+            <span style="font-family:'Space Mono',monospace;font-size:18px;font-weight:700;color:var(--accent);min-width:48px" id="c-margen-label">40%</span>
+          </div>
+        </div>
+
+        <!-- Panel derecho: resultado -->
+        <div style="display:flex;flex-direction:column;gap:16px">
+
+          <div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:28px;text-align:center">
+            <div style="font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Precio sugerido de venta</div>
+            <div style="font-family:'Space Mono',monospace;font-size:48px;font-weight:700;color:var(--green)" id="c-resultado">$0</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:6px" id="c-ganancia-neta"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <div class="card-title-icon">≡</div>
+              Desglose de costos
+            </div>
+            <div id="c-desglose" style="display:flex;flex-direction:column;gap:0"></div>
+            <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;display:flex;justify-content:space-between;align-items:center">
+              <span style="font-size:13px;color:var(--text2);font-weight:500">Costo total</span>
+              <span style="font-family:'Space Mono',monospace;font-size:16px;font-weight:700" id="c-total-costo">$0</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-title">
+              <div class="card-title-icon">◈</div>
+              Rangos de precio según margen
+            </div>
+            <div id="c-rangos" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- /view-calculadora -->
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+
+<!-- ===================== MODAL PEDIDO ===================== -->
+<div class="modal-overlay" id="pedido-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title-text">Nuevo pedido</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <input class="form-input" type="text" id="f-cliente" placeholder="Nombre del cliente">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Contacto</label>
+        <input class="form-input" type="text" id="f-contacto" placeholder="Tel / email">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Archivo STL (ruta o nombre)</label>
+      <input class="form-input" type="text" id="f-stl" placeholder="/modelos/pieza_principal.stl">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Material</label>
+        <select class="form-input" id="f-material">
+          <option>PLA</option><option>ABS</option><option>PETG</option><option>TPU</option><option>Resina</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color</label>
+        <input class="form-input" type="text" id="f-color" placeholder="Negro, Blanco...">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Precio ($)</label>
+        <input class="form-input" type="number" id="f-precio" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Costo materiales ($)</label>
+        <input class="form-input" type="number" id="f-costo" placeholder="0">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fecha de entrega</label>
+        <input class="form-input" type="date" id="f-fecha">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tiempo estimado (hs)</label>
+        <input class="form-input" type="number" id="f-horas" placeholder="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Estado</label>
+      <select class="form-input" id="f-estado">
+        <option>Pendiente</option><option>Imprimiendo</option><option>Entregado</option><option>Cancelado</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notas</label>
+      <input class="form-input" type="text" id="f-notas" placeholder="Observaciones adicionales...">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-delete" id="btn-delete-pedido" style="display:none" onclick="deletePedido()">Eliminar</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save"   onclick="savePedido()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ===================== MODAL MATERIAL ===================== -->
+<div class="modal-overlay" id="mat-modal">
+  <div class="modal">
+    <div class="modal-title">Agregar / editar material</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Tipo</label>
+        <select class="form-input" id="mf-tipo">
+          <option>PLA</option><option>ABS</option><option>PETG</option><option>TPU</option><option>Resina</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color (nombre)</label>
+        <input class="form-input" type="text" id="mf-color" placeholder="Negro">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Stock actual (g)</label>
+        <input class="form-input" type="number" id="mf-stock" placeholder="1000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Precio del kg ($)</label>
+        <input class="form-input" type="number" id="mf-precio-kg" placeholder="15000">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-delete" id="btn-delete-mat" style="display:none" onclick="deleteMaterial()">Eliminar</button>
+      <button class="btn-cancel" onclick="closeMatModal()">Cancelar</button>
+      <button class="btn-save"   onclick="saveMaterial()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Toast -->
+<div class="toast" id="toast">✓ <span id="toast-msg">Guardado correctamente</span></div>
+
+<!-- Lógica -->
+<script src="app.js"></script>
+
+</body>
+</html>
