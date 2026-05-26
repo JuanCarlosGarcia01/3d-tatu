@@ -2,33 +2,60 @@
    PrintControl — Lógica de la aplicación
    ============================================================ */
 
-// ============ BASE DE DATOS (localStorage) ============
+// ============ FIREBASE ============
 
-const STORAGE_KEY = 'printcontrol_v1';
+import { initializeApp }                          from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc }      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-function loadData() {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY);
-    return s ? JSON.parse(s) : null;
-  } catch(e) { return null; }
-}
-
-function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
-}
-
-const DEFAULT_DATA = {
-  pedidos: [],
-  materiales: []
+const firebaseConfig = {
+  apiKey:            "AIzaSyCscW8GmWeFverwZmUH9Vdw0co_XIf-Fmk",
+  authDomain:        "tatu3d-cd25b.firebaseapp.com",
+  projectId:         "tatu3d-cd25b",
+  storageBucket:     "tatu3d-cd25b.firebasestorage.app",
+  messagingSenderId: "897677948498",
+  appId:             "1:897677948498:web:bf4a444f7f3c263bb9518b"
 };
 
-let DB = loadData() || JSON.parse(JSON.stringify(DEFAULT_DATA));
+const firebaseApp = initializeApp(firebaseConfig);
+const db          = getFirestore(firebaseApp);
+const DB_DOC      = doc(db, 'printcontrol', 'data');
 
-// Si quedaron datos de demo guardados, los limpiamos
-if (DB.pedidos && DB.pedidos.some(p => p.cliente === 'Martín López')) {
-  DB = JSON.parse(JSON.stringify(DEFAULT_DATA));
-  saveData();
+const DEFAULT_DATA = {
+  pedidos:    [],
+  materiales: [],
+  gastos:     []
+};
+
+let DB = JSON.parse(JSON.stringify(DEFAULT_DATA));
+
+// Guarda en Firestore (sin bloquear la UI)
+async function saveData() {
+  try {
+    await setDoc(DB_DOC, DB);
+  } catch(e) {
+    console.error('Error guardando en Firebase:', e);
+    showToast('⚠ Error al guardar en la nube');
+  }
 }
+
+// Carga desde Firestore al iniciar
+async function loadData() {
+  try {
+    const snap = await getDoc(DB_DOC);
+    if (snap.exists()) {
+      DB = snap.data();
+      if (!DB.gastos)     DB.gastos     = [];
+      if (!DB.pedidos)    DB.pedidos    = [];
+      if (!DB.materiales) DB.materiales = [];
+    }
+  } catch(e) {
+    console.error('Error cargando desde Firebase:', e);
+  }
+  // Inicializar la app una vez que los datos están listos
+  initApp();
+}
+
+loadData();
 
 
 // ============ NAVEGACIÓN ============
@@ -49,13 +76,15 @@ function setView(v) {
     pedidos:      'Pedidos activos',
     historial:    'Historial de pedidos',
     materiales:   'Inventario de materiales',
-    calculadora:  'Calculadora de precios'
+    calculadora:  'Calculadora de precios',
+    gastos:       'Registro de gastos'
   };
-  document.getElementById('topbar-title').textContent = titles[v];
+  document.getElementById('topbar-title').textContent = titles[v] || v;
 
-  if (v === 'pedidos')   renderCalendar();
-  if (v === 'historial') renderHistorial();
-  if (v === 'materiales')renderMateriales();
+  if (v === 'pedidos')    renderCalendar();
+  if (v === 'historial')  renderHistorial();
+  if (v === 'materiales') renderMateriales();
+  if (v === 'gastos')     renderGastos();
 }
 
 
@@ -122,56 +151,157 @@ function renderMetrics() {
 let pieChart;
 let currentPeriod = 'semana';
 
-function getPeriodPedidos(period) {
+function getPeriodRange(period) {
   const today = new Date(); today.setHours(23, 59, 59);
   const start = new Date();
   if      (period === 'semana') start.setDate(today.getDate() - 7);
   else if (period === 'mes')    start.setDate(1);
   else                          start.setMonth(0, 1);
+  start.setHours(0, 0, 0, 0);
+  return { start, today };
+}
+
+function getPeriodPedidos(period) {
+  const { start, today } = getPeriodRange(period);
   return DB.pedidos.filter(p =>
     p.estado === 'Entregado' && new Date(p.fecha) >= start && new Date(p.fecha) <= today
   );
 }
 
+function getPeriodGastos(period) {
+  const { start, today } = getPeriodRange(period);
+  if (!DB.gastos) return [];
+  return DB.gastos.filter(g => {
+    const d = new Date(g.fecha);
+    return d >= start && d <= today;
+  });
+}
+
 function renderPieChart(period) {
   const pedidos = getPeriodPedidos(period);
-  const byMat   = {};
+  const gastos  = getPeriodGastos(period);
+  const legend  = document.getElementById('pie-legend');
+
+  // ---- Ganancias por material (anillo exterior) ----
+  const byMat = {};
   pedidos.forEach(p => {
     if (!byMat[p.material]) byMat[p.material] = 0;
     byMat[p.material] += p.precio - p.costo;
   });
+  const ganLabels = Object.keys(byMat);
+  const ganValues = Object.values(byMat);
+  const totalGan  = ganValues.reduce((s, v) => s + v, 0);
 
-  const labels = Object.keys(byMat);
-  const values = Object.values(byMat);
-  const colors = ['#7c6dfa','#3dd68c','#38bdf8','#f5a623','#f05252','#e879f9'];
-  const legend = document.getElementById('pie-legend');
+  // ---- Gastos por categoría (anillo interior) ----
+  const GASTO_META_LOCAL = {
+    repuesto:  { label: 'Repuesto',       color: '#f5a623' },
+    filamento: { label: 'Más filamento',  color: '#38bdf8' },
+    curso:     { label: 'Curso',          color: '#e879f9' },
+    modelo3d:  { label: 'Modelo 3D pago', color: '#3dd68c' },
+    urgencia:  { label: 'Urgencia',       color: '#f05252' },
+  };
+  const byCat = {};
+  gastos.forEach(g => {
+    if (!byCat[g.categoria]) byCat[g.categoria] = 0;
+    byCat[g.categoria] += g.monto;
+  });
+  const gastLabels = Object.keys(byCat);
+  const gastValues = Object.values(byCat);
+  const totalGast  = gastValues.reduce((s, v) => s + v, 0);
 
-  if (!labels.length) {
+  const balance = totalGan - totalGast;
+
+  // Centro del donut
+  const centerVal = document.getElementById('pie-center-val');
+  if (centerVal) {
+    centerVal.textContent = (balance >= 0 ? '+' : '') + '$' + Math.round(balance).toLocaleString('es-AR');
+    centerVal.style.color = balance >= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // Sin datos
+  if (!ganLabels.length && !gastLabels.length) {
     legend.innerHTML = '<div style="color:var(--text3);font-size:13px">Sin datos en este período</div>';
-    if (pieChart) { pieChart.data.labels = []; pieChart.data.datasets[0].data = []; pieChart.update(); }
+    if (pieChart) pieChart.destroy();
     return;
   }
 
-  legend.innerHTML = labels.map((l, i) => `
-    <div class="legend-item">
-      <div class="legend-dot" style="background:${colors[i % colors.length]}"></div>
-      <span class="legend-name">${l}</span>
-      <span class="legend-val">$${values[i].toLocaleString('es-AR')}</span>
-    </div>`).join('');
+  // Colores ganancias
+  const ganColors = ['#7c6dfa','#3dd68c','#38bdf8','#f5a623','#a78bfa','#34d399'];
+
+  // Dataset exterior: ganancias (o placeholder si no hay)
+  const outerData   = ganValues.length ? ganValues   : [1];
+  const outerColors = ganValues.length
+    ? ganLabels.map((_, i) => ganColors[i % ganColors.length])
+    : ['#2a2a32'];
+
+  // Dataset interior: gastos (o placeholder si no hay)
+  const innerData   = gastValues.length ? gastValues  : [1];
+  const innerColors = gastValues.length
+    ? gastLabels.map(cat => GASTO_META_LOCAL[cat]?.color || '#9896a0')
+    : ['#2a2a32'];
+
+  // Leyenda unificada
+  let legendHtml = '';
+  if (ganLabels.length) {
+    legendHtml += `<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Ganancias</div>`;
+    legendHtml += ganLabels.map((l, i) => `
+      <div class="legend-item">
+        <div class="legend-dot" style="background:${ganColors[i % ganColors.length]}"></div>
+        <span class="legend-name">${l}</span>
+        <span class="legend-val" style="color:var(--green)">+$${ganValues[i].toLocaleString('es-AR')}</span>
+      </div>`).join('');
+  }
+  if (gastLabels.length) {
+    legendHtml += `<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-top:8px;margin-bottom:4px">Gastos</div>`;
+    legendHtml += gastLabels.map((cat, i) => {
+      const m = GASTO_META_LOCAL[cat] || { label: cat, color: '#9896a0' };
+      return `<div class="legend-item">
+        <div class="legend-dot" style="background:${m.color}"></div>
+        <span class="legend-name">${m.label}</span>
+        <span class="legend-val" style="color:var(--red)">-$${gastValues[i].toLocaleString('es-AR')}</span>
+      </div>`;
+    }).join('');
+  }
+  legend.innerHTML = legendHtml;
 
   const ctx = document.getElementById('pieChart').getContext('2d');
   if (pieChart) pieChart.destroy();
   pieChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels,
-      datasets: [{ data: values, backgroundColor: colors.slice(0, labels.length), borderWidth: 0, hoverOffset: 4 }]
+      datasets: [
+        {
+          // exterior = ganancias
+          label: 'Ganancias',
+          data: outerData,
+          backgroundColor: outerColors,
+          borderWidth: 2,
+          borderColor: '#141416',
+          hoverOffset: 4,
+        },
+        {
+          // interior = gastos
+          label: 'Gastos',
+          data: innerData,
+          backgroundColor: innerColors,
+          borderWidth: 2,
+          borderColor: '#141416',
+          hoverOffset: 4,
+        }
+      ]
     },
     options: {
-      cutout: '65%',
+      cutout: '50%',
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: ctx => ` $${ctx.parsed.toLocaleString('es-AR')}` } }
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const prefix = ctx.datasetIndex === 0 ? '+' : '-';
+              return ` ${prefix}$${ctx.parsed.toLocaleString('es-AR')}`;
+            }
+          }
+        }
       },
       animation: { animateRotate: true, duration: 500 }
     }
@@ -599,6 +729,204 @@ function deleteMaterial() {
 }
 
 
+// ============ GASTOS ============
+
+const GASTO_META = {
+  repuesto:  { label: 'Repuesto',       icon: '🔧', color: 'var(--amber)',  bg: 'rgba(245,166,35,0.12)' },
+  filamento: { label: 'Más filamento',  icon: '◎',  color: 'var(--cyan)',   bg: 'rgba(56,189,248,0.12)' },
+  curso:     { label: 'Curso',          icon: '📚', color: 'var(--accent)', bg: 'rgba(124,109,250,0.12)' },
+  modelo3d:  { label: 'Modelo 3D pago', icon: '◈',  color: 'var(--green)',  bg: 'rgba(61,214,140,0.12)' },
+  urgencia:  { label: 'Urgencia',       icon: '⚠',  color: 'var(--red)',    bg: 'rgba(240,82,82,0.12)' },
+};
+
+let editingGastoId = null;
+
+function openGastoModal(id) {
+  editingGastoId = id || null;
+  const delBtn = document.getElementById('btn-delete-gasto');
+  document.getElementById('gasto-modal-title').textContent = id ? 'Editar gasto' : 'Registrar gasto';
+
+  // Resetear selección de categoría
+  document.querySelectorAll('.gasto-cat-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('gf-urgencia-wrap').style.display = 'none';
+
+  if (id) {
+    const g = DB.gastos.find(x => x.id === id);
+    if (!g) return;
+    document.getElementById('gf-monto').value = g.monto;
+    document.getElementById('gf-fecha').value = g.fecha;
+    document.getElementById('gf-nota').value  = g.nota || '';
+    document.getElementById('gf-urgencia-desc').value = g.urgencia_desc || '';
+    // Marcar categoría
+    const catBtn = document.querySelector(`.gasto-cat-btn[data-cat="${g.categoria}"]`);
+    if (catBtn) {
+      catBtn.classList.add('selected');
+      catBtn.querySelector('input').checked = true;
+    }
+    if (g.categoria === 'urgencia') document.getElementById('gf-urgencia-wrap').style.display = 'block';
+    delBtn.style.display = 'inline-block';
+  } else {
+    document.getElementById('gf-monto').value = '';
+    document.getElementById('gf-nota').value  = '';
+    document.getElementById('gf-urgencia-desc').value = '';
+    document.getElementById('gf-fecha').value = new Date().toISOString().slice(0, 10);
+    document.querySelectorAll('input[name="gasto-cat"]').forEach(r => r.checked = false);
+    delBtn.style.display = 'none';
+  }
+  document.getElementById('gasto-modal').classList.add('open');
+}
+
+function closeGastoModal() {
+  document.getElementById('gasto-modal').classList.remove('open');
+}
+
+// Interacción de botones de categoría
+document.querySelectorAll('.gasto-cat-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.gasto-cat-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    btn.querySelector('input').checked = true;
+    const isUrgencia = btn.dataset.cat === 'urgencia';
+    document.getElementById('gf-urgencia-wrap').style.display = isUrgencia ? 'block' : 'none';
+    if (!isUrgencia) document.getElementById('gf-urgencia-desc').value = '';
+  });
+});
+
+function saveGasto() {
+  const monto = parseFloat(document.getElementById('gf-monto').value) || 0;
+  const fecha = document.getElementById('gf-fecha').value || new Date().toISOString().slice(0, 10);
+  const nota  = document.getElementById('gf-nota').value;
+  const catInput = document.querySelector('input[name="gasto-cat"]:checked');
+
+  if (!monto) { alert('Ingresá un monto'); return; }
+  if (!catInput) { alert('Elegí una categoría'); return; }
+
+  const categoria = catInput.value;
+  const urgencia_desc = categoria === 'urgencia'
+    ? document.getElementById('gf-urgencia-desc').value
+    : '';
+
+  if (categoria === 'urgencia' && !urgencia_desc.trim()) {
+    alert('Describí el motivo de la urgencia'); return;
+  }
+
+  const g = { monto, fecha, nota, categoria, urgencia_desc };
+
+  if (editingGastoId) {
+    const idx = DB.gastos.findIndex(x => x.id === editingGastoId);
+    DB.gastos[idx] = { ...DB.gastos[idx], ...g };
+    showToast('Gasto actualizado');
+  } else {
+    DB.gastos.push({ id: Date.now(), ...g });
+    showToast('Gasto registrado');
+  }
+
+  saveData();
+  closeGastoModal();
+  renderGastos();
+}
+
+function deleteGasto() {
+  if (!confirm('¿Eliminar este gasto?')) return;
+  DB.gastos = DB.gastos.filter(x => x.id !== editingGastoId);
+  saveData();
+  closeGastoModal();
+  showToast('Gasto eliminado');
+  renderGastos();
+}
+
+function renderGastos() {
+  if (!DB.gastos) DB.gastos = [];
+
+  const gastos = DB.gastos;
+  const total  = gastos.reduce((s, g) => s + g.monto, 0);
+  const hoy    = new Date().toISOString().slice(0, 10);
+  const mesStart = new Date(); mesStart.setDate(1);
+
+  const esMes  = g => new Date(g.fecha) >= mesStart;
+  const totalMes = gastos.filter(esMes).reduce((s, g) => s + g.monto, 0);
+  const cantMes  = gastos.filter(esMes).length;
+
+  // Métricas
+  document.getElementById('gastos-metrics').innerHTML = `
+    <div class="metric-card">
+      <div class="metric-label">Total gastado</div>
+      <div class="metric-value" style="color:var(--red)">$${total.toLocaleString('es-AR')}</div>
+      <div class="metric-delta" style="color:var(--text3)">Acumulado</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Este mes</div>
+      <div class="metric-value">$${totalMes.toLocaleString('es-AR')}</div>
+      <div class="metric-delta" style="color:var(--text3)">${cantMes} gasto(s)</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total registros</div>
+      <div class="metric-value" style="color:var(--accent)">${gastos.length}</div>
+      <div class="metric-delta" style="color:var(--text3)">Histórico</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Urgencias</div>
+      <div class="metric-value" style="color:${gastos.filter(g=>g.categoria==='urgencia').length ? 'var(--red)':'var(--text2)'}">
+        ${gastos.filter(g => g.categoria === 'urgencia').length}
+      </div>
+      <div class="metric-delta" style="color:var(--text3)">Gastos imprevistos</div>
+    </div>
+  `;
+
+  // Por categoría
+  const catEl = document.getElementById('gastos-por-categoria');
+  if (!gastos.length) {
+    catEl.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px">Sin gastos registrados</div>';
+  } else {
+    const totCats = {};
+    gastos.forEach(g => { totCats[g.categoria] = (totCats[g.categoria] || 0) + g.monto; });
+    const maxVal = Math.max(...Object.values(totCats));
+
+    catEl.innerHTML = Object.entries(totCats)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, val]) => {
+        const m   = GASTO_META[cat] || { label: cat, icon: '●', color: 'var(--accent)', bg: '' };
+        const pct = maxVal > 0 ? Math.round((val / maxVal) * 100) : 0;
+        return `<div class="cat-bar-row">
+          <span style="font-size:15px;width:20px;text-align:center">${m.icon}</span>
+          <span class="cat-bar-label">${m.label}</span>
+          <div class="cat-bar-bg">
+            <div class="cat-bar-fill" style="width:${pct}%;background:${m.color}"></div>
+          </div>
+          <span class="cat-bar-val">$${val.toLocaleString('es-AR')}</span>
+        </div>`;
+      }).join('');
+  }
+
+  // Últimos gastos
+  const recEl = document.getElementById('gastos-recientes');
+  if (!gastos.length) {
+    recEl.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:8px">Sin gastos aún</div>';
+  } else {
+    recEl.innerHTML = [...gastos]
+      .sort((a, b) => new Date(b.fecha) - new Date(a.fecha))
+      .slice(0, 8)
+      .map(g => {
+        const m    = GASTO_META[g.categoria] || { label: g.categoria, icon: '●', color: 'var(--accent)', bg: '' };
+        const desc = g.categoria === 'urgencia' && g.urgencia_desc
+          ? g.urgencia_desc
+          : g.nota || '';
+        return `<div class="gasto-item" onclick="openGastoModal(${g.id})">
+          <div class="gasto-cat-icon" style="background:${m.bg};color:${m.color}">${m.icon}</div>
+          <div class="gasto-item-info">
+            <div class="gasto-item-cat">${m.label}</div>
+            ${desc ? `<div class="gasto-item-desc">${desc}</div>` : ''}
+          </div>
+          <div style="text-align:right">
+            <div class="gasto-item-monto">-$${g.monto.toLocaleString('es-AR')}</div>
+            <div class="gasto-item-fecha">${g.fecha}</div>
+          </div>
+        </div>`;
+      }).join('');
+  }
+}
+
+
 // ============ TOAST ============
 
 function showToast(msg) {
@@ -710,8 +1038,10 @@ function refreshAll() {
 
 // ============ INIT ============
 
-renderMetrics();
-renderPieChart('semana');
-renderLineChart('semana');
-renderUpcoming();
-calcular();
+function initApp() {
+  renderMetrics();
+  renderPieChart('semana');
+  renderLineChart('semana');
+  renderUpcoming();
+  calcular();
+}

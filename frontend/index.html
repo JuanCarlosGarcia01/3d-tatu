@@ -40,6 +40,9 @@
     <button class="nav-item" onclick="setView('calculadora')">
       <span class="nav-icon">∑</span> Calculadora
     </button>
+    <button class="nav-item" onclick="setView('gastos')">
+      <span class="nav-icon">💸</span> Gastos
+    </button>
   </div>
 </nav>
 
@@ -59,11 +62,11 @@
 
       <div class="grid-2" style="margin-bottom:20px">
 
-        <!-- Torta ganancias -->
+        <!-- Torta ganancias / gastos -->
         <div class="card">
           <div class="card-title">
             <div class="card-title-icon">◈</div>
-            Ganancias por categoría
+            Balance: ganancias y gastos
           </div>
           <div class="period-selector">
             <button class="period-btn active" onclick="setPeriod('semana',this)">Semana</button>
@@ -71,8 +74,15 @@
             <button class="period-btn"        onclick="setPeriod('ano',this)">Año</button>
           </div>
           <div style="display:flex;align-items:center;gap:16px">
-            <div class="chart-wrap" style="width:180px;height:180px;flex-shrink:0">
+            <div class="chart-wrap" style="width:180px;height:180px;flex-shrink:0;position:relative">
               <canvas id="pieChart" width="180" height="180"></canvas>
+              <!-- Balance neto en el centro -->
+              <div id="pie-center" style="
+                position:absolute;inset:0;display:flex;flex-direction:column;
+                align-items:center;justify-content:center;pointer-events:none">
+                <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px">Balance</div>
+                <div id="pie-center-val" style="font-family:'Space Mono',monospace;font-size:15px;font-weight:700;margin-top:2px"></div>
+              </div>
             </div>
             <div class="pie-legend" id="pie-legend"></div>
           </div>
@@ -309,6 +319,41 @@
       </div>
     </div><!-- /view-calculadora -->
 
+
+    <!-- ── GASTOS ── -->
+    <div class="view" id="view-gastos">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+        <div style="font-size:13px;color:var(--text2)">Registro de gastos del negocio</div>
+        <button class="btn-add" onclick="openGastoModal()">+ Registrar gasto</button>
+      </div>
+
+      <!-- Resumen métricas de gastos -->
+      <div class="metrics" id="gastos-metrics" style="margin-bottom:24px"></div>
+
+      <!-- Grid de gastos por categoría -->
+      <div class="grid-2" style="margin-bottom:20px">
+
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">◎</div>
+            Por categoría
+          </div>
+          <div id="gastos-por-categoria" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <div class="card-title-icon">≡</div>
+            Últimos gastos
+          </div>
+          <div id="gastos-recientes" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+
+      </div>
+
+    </div><!-- /view-gastos -->
+
   </div><!-- /content -->
 </div><!-- /main -->
 
@@ -418,11 +463,73 @@
 </div>
 
 
+<!-- ===================== MODAL GASTO ===================== -->
+<div class="modal-overlay" id="gasto-modal">
+  <div class="modal">
+    <div class="modal-title" id="gasto-modal-title">Registrar gasto</div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Monto ($)</label>
+        <input class="form-input" type="number" id="gf-monto" placeholder="0" min="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha</label>
+        <input class="form-input" type="date" id="gf-fecha">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Categoría</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:4px" id="gasto-categorias">
+        <label class="gasto-cat-btn" data-cat="repuesto">
+          <input type="radio" name="gasto-cat" value="repuesto" style="display:none">
+          <span class="cat-icon">🔧</span> Repuesto
+        </label>
+        <label class="gasto-cat-btn" data-cat="filamento">
+          <input type="radio" name="gasto-cat" value="filamento" style="display:none">
+          <span class="cat-icon">◎</span> Más filamento
+        </label>
+        <label class="gasto-cat-btn" data-cat="curso">
+          <input type="radio" name="gasto-cat" value="curso" style="display:none">
+          <span class="cat-icon">📚</span> Curso
+        </label>
+        <label class="gasto-cat-btn" data-cat="modelo3d">
+          <input type="radio" name="gasto-cat" value="modelo3d" style="display:none">
+          <span class="cat-icon">◈</span> Modelo 3D pago
+        </label>
+        <label class="gasto-cat-btn" data-cat="urgencia" style="grid-column:1/-1">
+          <input type="radio" name="gasto-cat" value="urgencia" style="display:none">
+          <span class="cat-icon">⚠</span> Urgencia
+        </label>
+      </div>
+    </div>
+
+    <!-- Campo descripción urgencia, solo visible si se elige urgencia -->
+    <div class="form-group" id="gf-urgencia-wrap" style="display:none">
+      <label class="form-label">Descripción de la urgencia</label>
+      <input class="form-input" type="text" id="gf-urgencia-desc" placeholder="Explicá el motivo del gasto urgente...">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Nota adicional (opcional)</label>
+      <input class="form-input" type="text" id="gf-nota" placeholder="Ej: marca del repuesto, nombre del curso...">
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-delete" id="btn-delete-gasto" style="display:none" onclick="deleteGasto()">Eliminar</button>
+      <button class="btn-cancel" onclick="closeGastoModal()">Cancelar</button>
+      <button class="btn-save"   onclick="saveGasto()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+
 <!-- Toast -->
 <div class="toast" id="toast">✓ <span id="toast-msg">Guardado correctamente</span></div>
 
-<!-- Lógica -->
-<script src="app.js"></script>
+<!-- Firebase -->
+<script type="module" src="app.js"></script>
 
 </body>
 </html>
