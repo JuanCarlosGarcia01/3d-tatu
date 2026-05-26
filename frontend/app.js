@@ -1045,3 +1045,28 @@ function initApp() {
   renderUpcoming();
   calcular();
 }
+
+// ============ EXPONER FUNCIONES AL HTML ============
+// Necesario porque type="module" no expone funciones globalmente
+
+window.setView          = setView;
+window.setPeriod        = setPeriod;
+window.setLinePeriod    = setLinePeriod;
+window.openModal        = openModal;
+window.closeModal       = closeModal;
+window.savePedido       = savePedido;
+window.deletePedido     = deletePedido;
+window.editPedido       = editPedido;
+window.changeMonth      = changeMonth;
+window.openMatModal     = openMatModal;
+window.closeMatModal    = closeMatModal;
+window.saveMaterial     = saveMaterial;
+window.deleteMaterial   = deleteMaterial;
+window.openGastoModal   = openGastoModal;
+window.closeGastoModal  = closeGastoModal;
+window.saveGasto        = saveGasto;
+window.deleteGasto      = deleteGasto;
+window.calcular         = calcular;
+window.filterHistorial  = filterHistorial;
+window.toggleAvanzados  = toggleAvanzados;
+window.updateMargenLabel = updateMargenLabel;
