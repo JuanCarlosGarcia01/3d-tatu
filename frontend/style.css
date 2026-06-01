@@ -664,3 +664,50 @@ td { padding: 12px 14px; color: var(--text); vertical-align: middle; }
 ::-webkit-scrollbar       { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ---- Login ---- */
+#login-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.login-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px;
+  width: 380px;
+  max-width: 95vw;
+}
+
+/* ---- Botones exportar ---- */
+.btn-export {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  transition: all 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-export:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgba(240,82,82,0.06);
+}
+
+.btn-export-xl:hover {
+  border-color: var(--green);
+  color: var(--green);
+  background: rgba(61,214,140,0.06);
+}
