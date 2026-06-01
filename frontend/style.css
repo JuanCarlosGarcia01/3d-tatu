@@ -685,29 +685,34 @@ td { padding: 12px 14px; color: var(--text); vertical-align: middle; }
 
 /* ---- Botones exportar ---- */
 .btn-export {
-  background: none;
-  border: 1px solid var(--border);
+  background: rgba(240,82,82,0.12);
+  border: 1px solid rgba(240,82,82,0.3);
   border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text2);
-  font-size: 12px;
+  padding: 10px 14px;
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   font-family: 'DM Sans', sans-serif;
   transition: all 0.15s;
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .btn-export:hover {
+  background: rgba(240,82,82,0.22);
   border-color: var(--red);
-  color: var(--red);
-  background: rgba(240,82,82,0.06);
+}
+
+.btn-export-xl {
+  background: rgba(61,214,140,0.12);
+  border: 1px solid rgba(61,214,140,0.3);
+  color: var(--green);
 }
 
 .btn-export-xl:hover {
+  background: rgba(61,214,140,0.22);
   border-color: var(--green);
-  color: var(--green);
-  background: rgba(61,214,140,0.06);
 }
