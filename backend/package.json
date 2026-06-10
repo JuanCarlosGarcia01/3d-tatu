@@ -6,7 +6,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js & node bot.js",
+    "start": "node server.js & node bot.js && wait",
     "dev": "nodemon server.js"
   },
   "dependencies": {
