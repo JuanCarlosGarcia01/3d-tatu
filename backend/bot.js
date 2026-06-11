@@ -134,4 +134,3 @@ cron.schedule('0 8 * * *', sendDailyReport, {
 });
 
 console.log('🤖 Bot corriendo — reporte diario a las 8:00 AM');
-sendDailyReport(); // borrar después de probar
