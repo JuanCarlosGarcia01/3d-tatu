@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, getDoc } = require('firebase/firestore');
 
-const bot = new TelegramBot('8935855020:AAFnmtOp0OF11Hn-wdpbB_sIBLj0aoXkDpk');
+const bot = new TelegramBot('8935855020:AAFnmtOp0OF11Hn-wdpbB_sIBLj0aoXkDpk', { polling: true });
 const CHAT_ID = '921937825';
 
 const firebaseConfig = {
