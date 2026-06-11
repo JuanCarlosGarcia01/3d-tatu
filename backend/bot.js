@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const { initializeApp } = require('firebase/app');
 const { getFirestore, doc, getDoc } = require('firebase/firestore');
 
-const bot = new TelegramBot('TU_TOKEN_AQUI');
+const bot = new TelegramBot('8935855020:AAFnmtOp0OF11Hn-wdpbB_sIBLj0aoXkDpk');
 const CHAT_ID = '921937825';
 
 const firebaseConfig = {
@@ -79,3 +79,4 @@ cron.schedule('0 8 * * *', sendDailyReport, {
 });
 
 console.log('🤖 Bot corriendo — reporte diario a las 8:00 AM');
+sendDailyReport(); // borrar después de probar
