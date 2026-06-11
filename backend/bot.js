@@ -106,5 +106,7 @@ bot.on('message', async (msg) => {
 cron.schedule('0 8 * * *', sendDailyReport, {
   timezone: 'America/Argentina/Buenos_Aires'
 });
-
+bot.on('polling_error', (err) => {
+  console.error('Polling error:', err.message);
+});
 console.log('🤖 Bot corriendo — reporte diario a las 8:00 AM');
