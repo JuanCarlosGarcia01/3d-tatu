@@ -73,6 +73,61 @@ async function sendDailyReport() {
   bot.sendMessage(CHAT_ID, msg, { parse_mode: 'Markdown' });
 }
 
+bot.on('message', async (msg) => {
+  if (msg.chat.id.toString() !== CHAT_ID) return; // solo vos
+
+  const texto = msg.text?.toLowerCase();
+
+  if (texto === '/pedidos') {
+    const snap = await getDoc(doc(db, 'printcontrol', 'data'));
+    const { pedidos = [] } = snap.data();
+    const activos = pedidos
+      .filter(p => p.estado !== 'Entregado' && p.estado !== 'Cancelado')
+      .sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+    if (!activos.length) return bot.sendMessage(CHAT_ID, '✅ Sin pedidos activos');
+
+    let msg2 = `*📦 Pedidos activos (${activos.length})*\n\n`;
+    activos.forEach(p => {
+      const d = daysUntil(p.fecha);
+      const emoji = d <= 1 ? '🔴' : d <= 3 ? '🟡' : '🟢';
+      const label = d < 0 ? `⚠️ VENCIDO` : d === 0 ? 'Hoy' : d === 1 ? 'Mañana' : `en ${d} días`;
+      msg2 += `${emoji} *${p.cliente}* — ${label}\n`;
+      msg2 += `   ${p.material} · ${p.color} · $${p.precio.toLocaleString('es-AR')}\n\n`;
+    });
+    bot.sendMessage(CHAT_ID, msg2, { parse_mode: 'Markdown' });
+  }
+
+  else if (texto === '/stock') {
+    const snap = await getDoc(doc(db, 'printcontrol', 'data'));
+    const { materiales = [] } = snap.data();
+
+    if (!materiales.length) return bot.sendMessage(CHAT_ID, 'Sin materiales cargados');
+
+    let msg2 = `*🧵 Stock de materiales*\n\n`;
+    materiales.forEach(m => {
+      const emoji = m.stock < 100 ? '🔴' : m.stock < 200 ? '🟡' : '🟢';
+      msg2 += `${emoji} ${m.tipo} ${m.color} — *${m.stock}g*\n`;
+    });
+    bot.sendMessage(CHAT_ID, msg2, { parse_mode: 'Markdown' });
+  }
+
+  else if (texto === '/ayuda') {
+    bot.sendMessage(CHAT_ID,
+      `*Comandos disponibles:*\n\n` +
+      `/pedidos — Ver pedidos activos\n` +
+      `/stock — Ver stock de materiales\n` +
+      `/resumen — Reporte completo ahora\n` +
+      `/ayuda — Esta lista`,
+      { parse_mode: 'Markdown' }
+    );
+  }
+
+  else if (texto === '/resumen') {
+    sendDailyReport();
+  }
+});
+
 // Todos los días a las 8:00 AM (hora Argentina)
 cron.schedule('0 8 * * *', sendDailyReport, {
   timezone: 'America/Argentina/Buenos_Aires'
