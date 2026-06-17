@@ -114,6 +114,7 @@ let currentView        = 'dashboard';
 let editingId          = null;
 let editingMatId       = null;
 let editingGastoId     = null;
+let consumoRowCount    = 0;
 
 function setView(v) {
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
@@ -535,6 +536,49 @@ function renderMateriales() {
     </div>`).join('');
 }
 
+// ============ CONSUMOS DE MATERIAL (filas dinámicas) ============
+
+function agregarConsumoRow(data) {
+  consumoRowCount++;
+  const rowId = `consumo-${consumoRowCount}`;
+  const materiales = ['PLA','ABS','PETG','TPU','Resina'];
+  const matVal   = data?.material || 'PLA';
+  const colorVal = data?.color    || '';
+  const gramVal  = data?.gramos   || '';
+
+  const wrap = document.createElement('div');
+  wrap.id = rowId;
+  wrap.style = 'display:flex;gap:8px;align-items:center';
+  wrap.innerHTML = `
+    <select class="form-input consumo-material" style="flex:1">
+      ${materiales.map(m => `<option ${m===matVal?'selected':''}>${m}</option>`).join('')}
+    </select>
+    <input class="form-input consumo-color" type="text" placeholder="Color" value="${colorVal}" style="flex:1">
+    <input class="form-input consumo-gramos" type="number" placeholder="Gramos" value="${gramVal}" style="width:100px">
+    <button type="button" onclick="document.getElementById('${rowId}').remove()"
+      style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--red);width:34px;height:34px;cursor:pointer;flex-shrink:0">✕</button>
+  `;
+  document.getElementById('consumos-list').appendChild(wrap);
+}
+
+function limpiarConsumoRows() {
+  document.getElementById('consumos-list').innerHTML = '';
+  consumoRowCount = 0;
+}
+
+function getConsumosFromForm() {
+  const rows = document.querySelectorAll('#consumos-list > div');
+  const consumos = [];
+  rows.forEach(row => {
+    const material = row.querySelector('.consumo-material').value;
+    const color     = row.querySelector('.consumo-color').value.trim();
+    const gramos    = parseFloat(row.querySelector('.consumo-gramos').value) || 0;
+    if (color && gramos > 0) consumos.push({ material, color, gramos });
+  });
+  return consumos;
+}
+
+
 // ============ MODAL PEDIDO ============
 
 function openModal(mode, id) {
@@ -543,11 +587,14 @@ function openModal(mode, id) {
   const delBtn = document.getElementById('btn-delete-pedido');
   document.getElementById('modal-title-text').textContent = mode === 'nuevo' ? 'Nuevo pedido' : 'Editar pedido';
 
+  limpiarConsumoRows();
+
   if (mode === 'nuevo') {
     ['f-cliente','f-contacto','f-stl','f-color','f-precio','f-costo','f-fecha','f-horas','f-notas']
       .forEach(fid => document.getElementById(fid).value = '');
     document.getElementById('f-material').value = 'PLA';
     document.getElementById('f-estado').value   = 'Pendiente';
+    agregarConsumoRow();
     delBtn.style.display = 'none';
   } else {
     const p = DB.pedidos.find(x => x.id === id);
@@ -563,6 +610,13 @@ function openModal(mode, id) {
     document.getElementById('f-horas').value    = p.horas;
     document.getElementById('f-estado').value   = p.estado;
     document.getElementById('f-notas').value    = p.notas;
+
+    if (Array.isArray(p.consumos) && p.consumos.length) {
+      p.consumos.forEach(c => agregarConsumoRow(c));
+    } else {
+      agregarConsumoRow();
+    }
+
     delBtn.style.display = 'inline-block';
   }
   modal.classList.add('open');
@@ -583,7 +637,8 @@ async function savePedido() {
     fecha:    document.getElementById('f-fecha').value    || new Date().toISOString().slice(0, 10),
     horas:    parseFloat(document.getElementById('f-horas').value)  || 0,
     estado:   document.getElementById('f-estado').value,
-    notas:    document.getElementById('f-notas').value
+    notas:    document.getElementById('f-notas').value,
+    consumos: getConsumosFromForm()
   };
 
   if (editingId) {
@@ -595,6 +650,9 @@ async function savePedido() {
     DB.pedidos.push(created);
   }
 
+  // Recargar materiales porque el stock pudo haber cambiado
+  DB.materiales = await apiGet('/api/materiales');
+
   closeModal();
   showToast('Pedido guardado correctamente');
   refreshAll();
@@ -604,6 +662,7 @@ async function deletePedido() {
   if (!confirm('¿Eliminar este pedido?')) return;
   await apiDelete(`/api/pedidos/${editingId}`);
   DB.pedidos = DB.pedidos.filter(x => x.id !== editingId);
+  DB.materiales = await apiGet('/api/materiales');
   closeModal();
   showToast('Pedido eliminado');
   refreshAll();
@@ -914,3 +973,4 @@ window.calcular         = calcular;
 window.filterHistorial  = filterHistorial;
 window.toggleAvanzados  = toggleAvanzados;
 window.updateMargenLabel = updateMargenLabel;
+window.agregarConsumoRow = agregarConsumoRow;

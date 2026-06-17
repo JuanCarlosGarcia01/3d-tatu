@@ -307,9 +307,16 @@
     </div>
     <div class="form-group"><label class="form-label">Archivo STL (ruta o nombre)</label><input class="form-input" type="text" id="f-stl" placeholder="/modelos/pieza.stl"></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Material</label><select class="form-input" id="f-material"><option>PLA</option><option>ABS</option><option>PETG</option><option>TPU</option><option>Resina</option></select></div>
-      <div class="form-group"><label class="form-label">Color</label><input class="form-input" type="text" id="f-color" placeholder="Negro, Blanco..."></div>
+      <div class="form-group"><label class="form-label">Material principal</label><select class="form-input" id="f-material"><option>PLA</option><option>ABS</option><option>PETG</option><option>TPU</option><option>Resina</option></select></div>
+      <div class="form-group"><label class="form-label">Color principal</label><input class="form-input" type="text" id="f-color" placeholder="Negro, Blanco..."></div>
     </div>
+
+    <div class="form-group">
+      <label class="form-label">Consumo de filamento (descuenta del stock)</label>
+      <div id="consumos-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+      <button type="button" class="btn-cancel" style="font-size:12px;padding:7px 14px" onclick="agregarConsumoRow()">+ Agregar material usado</button>
+    </div>
+
     <div class="form-row">
       <div class="form-group"><label class="form-label">Precio ($)</label><input class="form-input" type="number" id="f-precio" placeholder="0"></div>
       <div class="form-group"><label class="form-label">Costo materiales ($)</label><input class="form-input" type="number" id="f-costo" placeholder="0"></div>

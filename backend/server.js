@@ -100,8 +100,60 @@ async function connectDB() {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS pedido_consumos (
+      id          INT AUTO_INCREMENT PRIMARY KEY,
+      pedido_id   INT NOT NULL,
+      material    VARCHAR(100),
+      color       VARCHAR(100),
+      gramos      DECIMAL(10,2),
+      devuelto    TINYINT(1) DEFAULT 0,
+      FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE
+    )
+  `);
+
   console.log('✅ MySQL conectado y tablas listas');
   iniciarCrons();
+}
+
+// ============ HELPERS STOCK ============
+
+async function descontarStock(material, color, gramos) {
+  if (!gramos || gramos <= 0) return;
+  await db.execute(
+    'UPDATE materiales SET stock = stock - ? WHERE LOWER(tipo) = LOWER(?) AND LOWER(color) = LOWER(?)',
+    [gramos, material, color]
+  );
+}
+
+async function devolverStock(material, color, gramos) {
+  if (!gramos || gramos <= 0) return;
+  await db.execute(
+    'UPDATE materiales SET stock = stock + ? WHERE LOWER(tipo) = LOWER(?) AND LOWER(color) = LOWER(?)',
+    [gramos, material, color]
+  );
+}
+
+async function devolverConsumosPedido(pedidoId) {
+  const [consumos] = await db.execute(
+    'SELECT * FROM pedido_consumos WHERE pedido_id = ? AND devuelto = 0', [pedidoId]
+  );
+  for (const c of consumos) {
+    await devolverStock(c.material, c.color, c.gramos);
+  }
+  await db.execute('UPDATE pedido_consumos SET devuelto = 1 WHERE pedido_id = ?', [pedidoId]);
+}
+
+async function aplicarConsumosPedido(pedidoId, consumos) {
+  if (!Array.isArray(consumos)) return;
+  for (const c of consumos) {
+    if (!c.material || !c.color || !c.gramos) continue;
+    await db.execute(
+      'INSERT INTO pedido_consumos (pedido_id, material, color, gramos, devuelto) VALUES (?,?,?,?,0)',
+      [pedidoId, c.material, c.color, c.gramos]
+    );
+    await descontarStock(c.material, c.color, c.gramos);
+  }
 }
 
 connectDB().catch(err => {
@@ -256,30 +308,61 @@ app.post('/api/login', async (req, res) => {
 // ============ PEDIDOS ============
 app.get('/api/pedidos', authMiddleware, async (req, res) => {
   const [rows] = await db.execute('SELECT * FROM pedidos ORDER BY created_at DESC');
+  for (const p of rows) {
+    const [consumos] = await db.execute(
+      'SELECT material, color, gramos FROM pedido_consumos WHERE pedido_id = ? AND devuelto = 0', [p.id]
+    );
+    p.consumos = consumos;
+  }
   res.json(rows);
 });
 
 app.post('/api/pedidos', authMiddleware, async (req, res) => {
-  const { cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas } = req.body;
+  const { cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas, consumos } = req.body;
   const [result] = await db.execute(
     'INSERT INTO pedidos (cliente,contacto,stl,material,color,precio,costo,fecha,horas,estado,notas) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
     [cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas]
   );
-  const [rows] = await db.execute('SELECT * FROM pedidos WHERE id = ?', [result.insertId]);
-  res.json(rows[0]);
+  const pedidoId = result.insertId;
+
+  // Si el pedido ya nace Cancelado, no se descuenta stock
+  if (estado !== 'Cancelado') {
+    await aplicarConsumosPedido(pedidoId, consumos);
+  }
+
+  const [rows] = await db.execute('SELECT * FROM pedidos WHERE id = ?', [pedidoId]);
+  const [consumosGuardados] = await db.execute(
+    'SELECT material, color, gramos FROM pedido_consumos WHERE pedido_id = ? AND devuelto = 0', [pedidoId]
+  );
+  res.json({ ...rows[0], consumos: consumosGuardados });
 });
 
 app.put('/api/pedidos/:id', authMiddleware, async (req, res) => {
-  const { cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas } = req.body;
+  const { cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas, consumos } = req.body;
+  const pedidoId = req.params.id;
+
   await db.execute(
     'UPDATE pedidos SET cliente=?,contacto=?,stl=?,material=?,color=?,precio=?,costo=?,fecha=?,horas=?,estado=?,notas=? WHERE id=?',
-    [cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas, req.params.id]
+    [cliente, contacto, stl, material, color, precio, costo, fecha, horas, estado, notas, pedidoId]
   );
-  const [rows] = await db.execute('SELECT * FROM pedidos WHERE id = ?', [req.params.id]);
-  res.json(rows[0]);
+
+  // Devolver al stock los consumos previos (si los había y no fueron devueltos)
+  await devolverConsumosPedido(pedidoId);
+
+  // Si el nuevo estado no es Cancelado, aplicar los consumos actuales
+  if (estado !== 'Cancelado') {
+    await aplicarConsumosPedido(pedidoId, consumos);
+  }
+
+  const [rows] = await db.execute('SELECT * FROM pedidos WHERE id = ?', [pedidoId]);
+  const [consumosGuardados] = await db.execute(
+    'SELECT material, color, gramos FROM pedido_consumos WHERE pedido_id = ? AND devuelto = 0', [pedidoId]
+  );
+  res.json({ ...rows[0], consumos: consumosGuardados });
 });
 
 app.delete('/api/pedidos/:id', authMiddleware, async (req, res) => {
+  await devolverConsumosPedido(req.params.id);
   await db.execute('DELETE FROM pedidos WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
 });
