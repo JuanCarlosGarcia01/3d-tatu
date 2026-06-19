@@ -536,29 +536,158 @@ function renderMateriales() {
     </div>`).join('');
 }
 
+// ============ CHIPS DE COLOR (color principal del pedido) ============
+
+let selectedColors = []; // hasta 4 colores seleccionados
+
+function getColoresPorMaterial(material) {
+  return DB.materiales
+    .filter(m => m.tipo.toLowerCase() === material.toLowerCase())
+    .map(m => m.color);
+}
+
+function renderColorChips(material, preselected = []) {
+  selectedColors = Array.isArray(preselected) ? [...preselected] : [];
+  const wrap  = document.getElementById('color-chips-wrap');
+  const msg   = document.getElementById('color-chips-msg');
+  const input = document.getElementById('f-color');
+  const colores = getColoresPorMaterial(material);
+
+  if (!colores.length) {
+    wrap.innerHTML = '';
+    msg.textContent = `No tenés ${material} cargado en Materiales.`;
+    msg.style.display = 'block';
+    input.value = '';
+    return;
+  }
+
+  msg.style.display = 'none';
+
+  function redraw() {
+    wrap.innerHTML = colores.map(color => {
+      const activo = selectedColors.includes(color);
+      return `<button type="button"
+        onclick="toggleColorChip('${color}')"
+        style="
+          padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;
+          border:1px solid ${activo ? 'var(--accent)' : 'var(--border)'};
+          background:${activo ? 'rgba(124,109,250,0.18)' : 'var(--bg4)'};
+          color:${activo ? 'var(--accent)' : 'var(--text2)'};
+          font-family:'DM Sans',sans-serif;
+          font-weight:${activo ? '600' : '400'};
+          transition:all 0.12s;
+        ">${color}</button>`;
+    }).join('');
+    input.value = selectedColors.join(', ');
+    const label = document.getElementById('color-count-label');
+    label.textContent = `(${selectedColors.length}/4 seleccionados)`;
+    label.style.color = selectedColors.length >= 4 ? 'var(--amber)' : 'var(--text3)';
+  }
+
+  redraw();
+  // Guardar redraw en el wrap para reutilizar desde toggleColorChip
+  wrap._redraw = redraw;
+}
+
+function toggleColorChip(color) {
+  if (selectedColors.includes(color)) {
+    selectedColors = selectedColors.filter(c => c !== color);
+  } else {
+    if (selectedColors.length >= 4) {
+      showToast('Máximo 4 colores por pedido');
+      return;
+    }
+    selectedColors.push(color);
+  }
+  const wrap = document.getElementById('color-chips-wrap');
+  if (wrap._redraw) wrap._redraw();
+}
+
+function onMaterialChange() {
+  const material = document.getElementById('f-material').value;
+  renderColorChips(material, []);
+}
+
 // ============ CONSUMOS DE MATERIAL (filas dinámicas) ============
 
 function agregarConsumoRow(data) {
   consumoRowCount++;
-  const rowId = `consumo-${consumoRowCount}`;
-  const materiales = ['PLA','ABS','PETG','TPU','Resina'];
+  const rowId    = `consumo-${consumoRowCount}`;
   const matVal   = data?.material || 'PLA';
   const colorVal = data?.color    || '';
   const gramVal  = data?.gramos   || '';
 
   const wrap = document.createElement('div');
-  wrap.id = rowId;
-  wrap.style = 'display:flex;gap:8px;align-items:center';
+  wrap.id    = rowId;
+  wrap.style = 'display:flex;gap:8px;align-items:flex-start;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+
+  // Colores disponibles para el material seleccionado
+  const coloresDispo = getColoresPorMaterial(matVal);
+
   wrap.innerHTML = `
-    <select class="form-input consumo-material" style="flex:1">
-      ${materiales.map(m => `<option ${m===matVal?'selected':''}>${m}</option>`).join('')}
-    </select>
-    <input class="form-input consumo-color" type="text" placeholder="Color" value="${colorVal}" style="flex:1">
-    <input class="form-input consumo-gramos" type="number" placeholder="Gramos" value="${gramVal}" style="width:100px">
-    <button type="button" onclick="document.getElementById('${rowId}').remove()"
-      style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--red);width:34px;height:34px;cursor:pointer;flex-shrink:0">✕</button>
+    <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="form-input consumo-material" style="flex:1;font-size:12px" onchange="onConsumoMaterialChange('${rowId}')">
+          ${['PLA','ABS','PETG','TPU','Resina'].map(m => `<option ${m===matVal?'selected':''}>${m}</option>`).join('')}
+        </select>
+        <input class="form-input consumo-gramos" type="number" placeholder="Gramos" value="${gramVal}"
+          style="width:90px;font-size:12px" min="0">
+        <button type="button" onclick="document.getElementById('${rowId}').remove()"
+          style="background:none;border:1px solid var(--border);border-radius:6px;color:var(--red);width:32px;height:32px;cursor:pointer;flex-shrink:0;font-size:14px">✕</button>
+      </div>
+      <div class="consumo-color-chips" style="display:flex;flex-wrap:wrap;gap:5px">
+        ${coloresDispo.length
+          ? coloresDispo.map(c => `
+              <button type="button" onclick="toggleConsumoChip('${rowId}','${c}')"
+                class="consumo-chip"
+                data-color="${c}"
+                style="padding:3px 10px;border-radius:14px;font-size:11px;cursor:pointer;
+                  border:1px solid ${c===colorVal?'var(--accent)':'var(--border)'};
+                  background:${c===colorVal?'rgba(124,109,250,0.18)':'var(--bg4)'};
+                  color:${c===colorVal?'var(--accent)':'var(--text2)'};
+                  font-family:'DM Sans',sans-serif;transition:all 0.12s">${c}</button>`).join('')
+          : `<span style="font-size:11px;color:var(--text3)">No hay colores de ${matVal} en stock</span>`
+        }
+      </div>
+      <input type="hidden" class="consumo-color-value" value="${colorVal}">
+    </div>
   `;
   document.getElementById('consumos-list').appendChild(wrap);
+}
+
+function toggleConsumoChip(rowId, color) {
+  const row   = document.getElementById(rowId);
+  const input = row.querySelector('.consumo-color-value');
+  const chips = row.querySelectorAll('.consumo-chip');
+
+  // Solo 1 color por fila de consumo (radio behavior)
+  const yaSeleccionado = input.value === color;
+  input.value = yaSeleccionado ? '' : color;
+
+  chips.forEach(btn => {
+    const activo = btn.dataset.color === input.value;
+    btn.style.border      = `1px solid ${activo ? 'var(--accent)' : 'var(--border)'}`;
+    btn.style.background  = activo ? 'rgba(124,109,250,0.18)' : 'var(--bg4)';
+    btn.style.color       = activo ? 'var(--accent)' : 'var(--text2)';
+  });
+}
+
+function onConsumoMaterialChange(rowId) {
+  const row      = document.getElementById(rowId);
+  const material = row.querySelector('.consumo-material').value;
+  const colores  = getColoresPorMaterial(material);
+  const chipsDiv = row.querySelector('.consumo-color-chips');
+  const input    = row.querySelector('.consumo-color-value');
+  input.value    = '';
+
+  chipsDiv.innerHTML = colores.length
+    ? colores.map(c => `
+        <button type="button" onclick="toggleConsumoChip('${rowId}','${c}')"
+          class="consumo-chip" data-color="${c}"
+          style="padding:3px 10px;border-radius:14px;font-size:11px;cursor:pointer;
+            border:1px solid var(--border);background:var(--bg4);color:var(--text2);
+            font-family:'DM Sans',sans-serif;transition:all 0.12s">${c}</button>`).join('')
+    : `<span style="font-size:11px;color:var(--text3)">No hay colores de ${material} en stock</span>`;
 }
 
 function limpiarConsumoRows() {
@@ -571,8 +700,8 @@ function getConsumosFromForm() {
   const consumos = [];
   rows.forEach(row => {
     const material = row.querySelector('.consumo-material').value;
-    const color     = row.querySelector('.consumo-color').value.trim();
-    const gramos    = parseFloat(row.querySelector('.consumo-gramos').value) || 0;
+    const color    = row.querySelector('.consumo-color-value').value.trim();
+    const gramos   = parseFloat(row.querySelector('.consumo-gramos').value) || 0;
     if (color && gramos > 0) consumos.push({ material, color, gramos });
   });
   return consumos;
@@ -588,12 +717,15 @@ function openModal(mode, id) {
   document.getElementById('modal-title-text').textContent = mode === 'nuevo' ? 'Nuevo pedido' : 'Editar pedido';
 
   limpiarConsumoRows();
+  selectedColors = [];
 
   if (mode === 'nuevo') {
-    ['f-cliente','f-contacto','f-stl','f-color','f-precio','f-costo','f-fecha','f-horas','f-notas']
+    ['f-cliente','f-contacto','f-stl','f-precio','f-costo','f-fecha','f-horas','f-notas']
       .forEach(fid => document.getElementById(fid).value = '');
+    document.getElementById('f-color').value   = '';
     document.getElementById('f-material').value = 'PLA';
     document.getElementById('f-estado').value   = 'Pendiente';
+    renderColorChips('PLA', []);
     agregarConsumoRow();
     delBtn.style.display = 'none';
   } else {
@@ -603,13 +735,16 @@ function openModal(mode, id) {
     document.getElementById('f-contacto').value = p.contacto;
     document.getElementById('f-stl').value      = p.stl;
     document.getElementById('f-material').value = p.material;
-    document.getElementById('f-color').value    = p.color;
     document.getElementById('f-precio').value   = p.precio;
     document.getElementById('f-costo').value    = p.costo;
     document.getElementById('f-fecha').value    = p.fecha;
     document.getElementById('f-horas').value    = p.horas;
     document.getElementById('f-estado').value   = p.estado;
     document.getElementById('f-notas').value    = p.notas;
+
+    // Cargar colores preseleccionados (pueden venir separados por coma)
+    const coloresPre = p.color ? p.color.split(',').map(c => c.trim()).filter(Boolean) : [];
+    renderColorChips(p.material, coloresPre);
 
     if (Array.isArray(p.consumos) && p.consumos.length) {
       p.consumos.forEach(c => agregarConsumoRow(c));
@@ -971,6 +1106,10 @@ window.saveGasto        = saveGasto;
 window.deleteGasto      = deleteGasto;
 window.calcular         = calcular;
 window.filterHistorial  = filterHistorial;
-window.toggleAvanzados  = toggleAvanzados;
+window.toggleAvanzados   = toggleAvanzados;
 window.updateMargenLabel = updateMargenLabel;
-window.agregarConsumoRow = agregarConsumoRow;
+window.agregarConsumoRow     = agregarConsumoRow;
+window.toggleColorChip       = toggleColorChip;
+window.onMaterialChange      = onMaterialChange;
+window.toggleConsumoChip     = toggleConsumoChip;
+window.onConsumoMaterialChange = onConsumoMaterialChange;
