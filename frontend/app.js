@@ -536,79 +536,13 @@ function renderMateriales() {
     </div>`).join('');
 }
 
-// ============ CHIPS DE COLOR (color principal del pedido) ============
-
-let selectedColors = []; // hasta 4 colores seleccionados
+// ============ CONSUMOS DE MATERIAL (filas dinámicas) ============
 
 function getColoresPorMaterial(material) {
   return DB.materiales
     .filter(m => m.tipo.toLowerCase() === material.toLowerCase())
     .map(m => m.color);
 }
-
-function renderColorChips(material, preselected = []) {
-  selectedColors = Array.isArray(preselected) ? [...preselected] : [];
-  const wrap  = document.getElementById('color-chips-wrap');
-  const msg   = document.getElementById('color-chips-msg');
-  const input = document.getElementById('f-color');
-  const colores = getColoresPorMaterial(material);
-
-  if (!colores.length) {
-    wrap.innerHTML = '';
-    msg.textContent = `No tenés ${material} cargado en Materiales.`;
-    msg.style.display = 'block';
-    input.value = '';
-    return;
-  }
-
-  msg.style.display = 'none';
-
-  function redraw() {
-    wrap.innerHTML = colores.map(color => {
-      const activo = selectedColors.includes(color);
-      return `<button type="button"
-        onclick="toggleColorChip('${color}')"
-        style="
-          padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;
-          border:1px solid ${activo ? 'var(--accent)' : 'var(--border)'};
-          background:${activo ? 'rgba(124,109,250,0.18)' : 'var(--bg4)'};
-          color:${activo ? 'var(--accent)' : 'var(--text2)'};
-          font-family:'DM Sans',sans-serif;
-          font-weight:${activo ? '600' : '400'};
-          transition:all 0.12s;
-        ">${color}</button>`;
-    }).join('');
-    input.value = selectedColors.join(', ');
-    const label = document.getElementById('color-count-label');
-    label.textContent = `(${selectedColors.length}/4 seleccionados)`;
-    label.style.color = selectedColors.length >= 4 ? 'var(--amber)' : 'var(--text3)';
-  }
-
-  redraw();
-  // Guardar redraw en el wrap para reutilizar desde toggleColorChip
-  wrap._redraw = redraw;
-}
-
-function toggleColorChip(color) {
-  if (selectedColors.includes(color)) {
-    selectedColors = selectedColors.filter(c => c !== color);
-  } else {
-    if (selectedColors.length >= 4) {
-      showToast('Máximo 4 colores por pedido');
-      return;
-    }
-    selectedColors.push(color);
-  }
-  const wrap = document.getElementById('color-chips-wrap');
-  if (wrap._redraw) wrap._redraw();
-}
-
-function onMaterialChange() {
-  const material = document.getElementById('f-material').value;
-  renderColorChips(material, []);
-}
-
-// ============ CONSUMOS DE MATERIAL (filas dinámicas) ============
 
 function agregarConsumoRow(data) {
   consumoRowCount++;
@@ -717,15 +651,12 @@ function openModal(mode, id) {
   document.getElementById('modal-title-text').textContent = mode === 'nuevo' ? 'Nuevo pedido' : 'Editar pedido';
 
   limpiarConsumoRows();
-  selectedColors = [];
 
   if (mode === 'nuevo') {
     ['f-cliente','f-contacto','f-stl','f-precio','f-costo','f-fecha','f-horas','f-notas']
       .forEach(fid => document.getElementById(fid).value = '');
-    document.getElementById('f-color').value   = '';
     document.getElementById('f-material').value = 'PLA';
     document.getElementById('f-estado').value   = 'Pendiente';
-    renderColorChips('PLA', []);
     agregarConsumoRow();
     delBtn.style.display = 'none';
   } else {
@@ -741,10 +672,6 @@ function openModal(mode, id) {
     document.getElementById('f-horas').value    = p.horas;
     document.getElementById('f-estado').value   = p.estado;
     document.getElementById('f-notas').value    = p.notas;
-
-    // Cargar colores preseleccionados (pueden venir separados por coma)
-    const coloresPre = p.color ? p.color.split(',').map(c => c.trim()).filter(Boolean) : [];
-    renderColorChips(p.material, coloresPre);
 
     if (Array.isArray(p.consumos) && p.consumos.length) {
       p.consumos.forEach(c => agregarConsumoRow(c));
@@ -766,7 +693,7 @@ async function savePedido() {
     contacto: document.getElementById('f-contacto').value,
     stl:      document.getElementById('f-stl').value      || '/modelos/sin_archivo.stl',
     material: document.getElementById('f-material').value,
-    color:    document.getElementById('f-color').value,
+    color:    getConsumosFromForm().map(c => c.color).filter((v,i,a) => a.indexOf(v)===i).join(', ') || '',
     precio:   parseFloat(document.getElementById('f-precio').value) || 0,
     costo:    parseFloat(document.getElementById('f-costo').value)  || 0,
     fecha:    document.getElementById('f-fecha').value    || new Date().toISOString().slice(0, 10),
@@ -1109,7 +1036,5 @@ window.filterHistorial  = filterHistorial;
 window.toggleAvanzados   = toggleAvanzados;
 window.updateMargenLabel = updateMargenLabel;
 window.agregarConsumoRow     = agregarConsumoRow;
-window.toggleColorChip       = toggleColorChip;
-window.onMaterialChange      = onMaterialChange;
 window.toggleConsumoChip     = toggleConsumoChip;
 window.onConsumoMaterialChange = onConsumoMaterialChange;
